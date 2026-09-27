@@ -171,7 +171,9 @@ let appTarget: Target = .target(
         ),
     ],
     dependencies: [
-        .target(name: "TopShelf"),
+        // TopShelf removed for free-Apple-ID builds: it is a tvTopShelfExtension
+        // that needs the group.com.pyksel.nuviotvos App Group (paid account only).
+        // Re-add `.target(name: "TopShelf")` + topShelfTarget once signed with $99/yr.
         .package(product: "AetherEngine"),
         .package(product: "AetherEngineSMB"),
         .package(product: "LibTorrent"),
@@ -286,7 +288,7 @@ let project = Project(
         configurations: configurations(),
         defaultSettings: defaultSettings
     ),
-    targets: [appTarget, topShelfTarget, unitTestsTarget],
+    targets: [appTarget, unitTestsTarget],
     schemes: [
         .scheme(
             name: "NuvioTV",
