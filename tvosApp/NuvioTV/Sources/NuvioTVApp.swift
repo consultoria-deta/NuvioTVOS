@@ -833,6 +833,13 @@ struct ContentView: View {
     private func handleDeepLink(_ url: URL) {
         let scheme = (url.scheme ?? "").lowercased()
 
+        // TEMP (Native Player callback discovery): log the raw return URL so we can
+        // see exactly what params Native Player appends to x-success/x-error. Grep
+        // the Xcode console for [EXT-CALLBACK]. Remove once the contract is known.
+        #if DEBUG
+        print("[EXT-CALLBACK] incoming deep link: \(url.absoluteString)")
+        #endif
+
         // stremio://host/path/manifest.json → install add-on
         if scheme == "stremio" {
             handleStremioInstallDeepLink(url)
@@ -1421,8 +1428,13 @@ struct ContentView: View {
         let defaultPlayer = ExternalPlayer.from(store.string(forKey: SettingsKey.externalPlayer))
         let player = customPlayer ?? defaultPlayer
         let forwardSubtitles = (store.object(forKey: SettingsKey.externalPlayerForwardSubtitles) as? Bool) ?? true
+        // Put the best complete (non-forced) preferred-language subtitle first: players
+        // that read only the first `sub=` then get the full dialogue track, not a forced one.
         let subtitleURLs = forwardSubtitles
-            ? externalSubtitles.compactMap { URL(string: $0.url) }
+            ? SubtitleLanguagePreferences.bestCompleteFirst(
+                externalSubtitles,
+                preferredLanguages: SubtitleLanguagePreferences.orderedFromDefaults(defaults: store)
+              ).compactMap { URL(string: $0.url) }
             : []
 
         let numbers: (season: Int, episode: Int)?
@@ -1440,7 +1452,9 @@ struct ContentView: View {
         let externalSession: ExternalPlaybackSession?
         let successCallback: URL?
         let errorCallback: URL?
-        if player == .infuse || player == .senplayer {
+        // Infuse, SenPlayer, and Native Player all take x-callback-url success/error
+        // URLs and return here so we can report watch progress to continue-watching/Trakt.
+        if player == .infuse || player == .senplayer || player == .nativePlayer {
             let id = UUID().uuidString
             let profileID = profileViewModel.activeProfile?.id ?? WatchedStore.activeProfileId
             externalSession = ExternalPlaybackSession(
@@ -1477,6 +1491,7 @@ struct ContentView: View {
                filename: mediaFilename,
                subtitleURLs: subtitleURLs,
                position: resumeFrom,
+               title: meta.name,
                successURL: successCallback,
                errorURL: errorCallback
            ),

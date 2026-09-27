@@ -7528,7 +7528,7 @@ private struct PlaybackSettingsView: View {
 
                 SettingsOptionRow(
                     title: L10n.string("tvos_settings_external_player", fallback: "External Player"),
-                    subtitle: L10n.string("tvos_settings_hand_streams_to_infuse_vlc_outplayer_npl_fb341610", fallback: "Hand streams to Infuse, VLC, Outplayer, nPlayer, VidHub, or SenPlayer when installed"),
+                    subtitle: L10n.string("tvos_settings_hand_streams_to_infuse_vlc_outplayer_npl_fb341610", fallback: "Hand streams to Infuse, VLC, Outplayer, nPlayer, VidHub, SenPlayer, or Native Player when installed"),
                     selection: $externalPlayer,
                     options: externalPlayers,
                     accentColor: accentColor
