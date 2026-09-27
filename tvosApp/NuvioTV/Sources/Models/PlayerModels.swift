@@ -178,6 +178,7 @@ enum ExternalPlayer: String, CaseIterable, Identifiable {
     case nplayer = "nPlayer"
     case vidhub = "VidHub"
     case senplayer = "SenPlayer"
+    case nativePlayer = "Native Player"
 
     var id: String { rawValue }
 
@@ -194,6 +195,7 @@ enum ExternalPlayer: String, CaseIterable, Identifiable {
         case .nplayer: return "play.rectangle.fill"
         case .vidhub: return "play.square.fill"
         case .senplayer: return "play.rectangle.on.rectangle.fill"
+        case .nativePlayer: return "play.display"
         }
     }
 
@@ -206,13 +208,14 @@ enum ExternalPlayer: String, CaseIterable, Identifiable {
     /// The URL-scheme deep link that hands `streamURL` to this player, or `nil`
     /// for the built-in player (which plays in-app). Infuse supports multi-`sub=`,
     /// `filename=` (for accurate metadata/title scraping), and `position=`.
-    /// VLC takes the first subtitle. Source is percent-encoded so query separators
-    /// in the stream URL survive.
+    /// VLC takes the first subtitle. Native Player takes a display `name=` (title).
+    /// Source is percent-encoded so query separators in the stream URL survive.
     func launchURL(
         for streamURL: URL,
         filename: String? = nil,
         subtitleURLs: [URL] = [],
         position: Double? = nil,
+        title: String? = nil,
         successURL: URL? = nil,
         errorURL: URL? = nil
     ) -> URL? {
@@ -300,6 +303,36 @@ enum ExternalPlayer: String, CaseIterable, Identifiable {
                        withAllowedCharacters: .externalPlayerURLValue
                    ) {
                     query += "&\(name)=\(encodedCallback)"
+                }
+            }
+            return URL(string: query)
+        case .nativePlayer:
+            // Native Player (App Store, tvOS) — does DV Profile 7 → 8.1 conversion.
+            // Simple form: nativeplayer://play?url=<video>&name=<title>&sub=<subtitle>.
+            // With progress callbacks we use its x-callback-url form so it can
+            // report back x-success/x-error the way Infuse does.
+            let wantsCallback = successURL != nil || errorURL != nil
+            var query = wantsCallback
+                ? "nativeplayer://x-callback-url/play?url=\(encoded)"
+                : "nativeplayer://play?url=\(encoded)"
+            if let title,
+               let encodedTitle = title.addingPercentEncoding(
+                   withAllowedCharacters: .externalPlayerURLValue
+               ) {
+                query += "&name=\(encodedTitle)"
+            }
+            for sub in encodedSubs.prefix(8) {
+                query += "&sub=\(sub)"
+            }
+            if wantsCallback {
+                query += "&x-source=Nuvio"
+                for (name, callback) in [("x-success", successURL), ("x-error", errorURL)] {
+                    if let callback,
+                       let encodedCallback = callback.absoluteString.addingPercentEncoding(
+                           withAllowedCharacters: .externalPlayerURLValue
+                       ) {
+                        query += "&\(name)=\(encodedCallback)"
+                    }
                 }
             }
             return URL(string: query)
@@ -491,6 +524,38 @@ private extension CharacterSet {
     static let externalPlayerURLValue = CharacterSet(
         charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
     )
+}
+
+extension SubtitleLanguagePreferences {
+    /// Orders subtitles for external-player handoff so the best COMPLETE (non-forced)
+    /// subtitle in the user's preferred language comes first. External players often
+    /// honor only the first `sub=` (VLC always; Native Player observed to), so index 0
+    /// must be the full dialogue track — forced / foreign-parts-only tracks sink to the
+    /// end (they don't carry the whole dialogue). Nothing is dropped; forced detection is
+    /// a best-effort text heuristic since `NuvioSubtitle` has no disposition flag.
+    static func bestCompleteFirst(
+        _ subs: [NuvioSubtitle],
+        preferredLanguages: [String]
+    ) -> [NuvioSubtitle] {
+        guard subs.count > 1 else { return subs }
+        func isForced(_ sub: NuvioSubtitle) -> Bool {
+            let hay = "\(sub.label ?? "") \(sub.language) \(sub.url)".lowercased()
+            return hay.contains("forced") || hay.contains("foreign part")
+        }
+        let complete = subs.filter { !isForced($0) }
+        let forced = subs.filter { isForced($0) }
+        var seen: Set<String> = []
+        var ordered: [NuvioSubtitle] = []
+        for language in preferredLanguages {
+            for sub in complete where matches(sub.language, target: language)
+                || matches(sub.label, target: language) {
+                if seen.insert(sub.url).inserted { ordered.append(sub) }
+            }
+        }
+        for sub in complete where seen.insert(sub.url).inserted { ordered.append(sub) }
+        for sub in forced where seen.insert(sub.url).inserted { ordered.append(sub) }
+        return ordered
+    }
 }
 
 /// A next-episode stream the player resolved and is ready to hand to mpv for a

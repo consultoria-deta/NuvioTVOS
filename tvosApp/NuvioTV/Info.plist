@@ -58,6 +58,7 @@
 		<string>nplayer-https</string>
 		<string>vidhub</string>
 		<string>senplayer</string>
+		<string>nativeplayer</string>
 	</array>
 	<key>LSMinimumSystemVersion</key>
 	<string>12.0</string>
