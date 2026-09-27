@@ -1,16 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Emptied for free-Apple-ID on-device signing: iCloud KVS, push, and the
+     group.com.pyksel.nuviotvos App Group all need a paid Apple Developer
+     account. Restore from git history once the $99/yr account is active. -->
 <plist version="1.0">
-<dict>
-	<key>com.apple.developer.ubiquity-kvstore-identifier</key>
-	<string>$(TeamIdentifierPrefix)com.pyksel.nuviotvos</string>
-	<key>aps-environment</key>
-	<string>development</string>
-	<key>com.apple.developer.associated-domains</key>
-	<array/>
-	<key>com.apple.security.application-groups</key>
-	<array>
-		<string>group.com.pyksel.nuviotvos</string>
-	</array>
-</dict>
+<dict/>
 </plist>
