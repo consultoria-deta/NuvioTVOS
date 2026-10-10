@@ -308,13 +308,19 @@ enum ExternalPlayer: String, CaseIterable, Identifiable {
             return URL(string: query)
         case .nativePlayer:
             // Native Player (App Store, tvOS) — does DV Profile 7 → 8.1 conversion.
-            // Simple form: nativeplayer://play?url=<video>&name=<title>&sub=<subtitle>.
-            // With progress callbacks we use its x-callback-url form so it can
-            // report back x-success/x-error the way Infuse does.
+            // Scheme: nativeplayer://play?url=<video>&name=<title>&sub=<subtitle>.
+            // For an externally-launched URL, Native Player resumes only if the
+            // CALLER sends the start time (confirmed by dev u/lexqqq) — so we pass
+            // `position=<seconds>`, the same param Infuse takes. The x-callback-url
+            // form carries x-success/x-error for progress-back (continue-watching);
+            // [EXT-CALLBACK] in NuvioTVApp.handleDeepLink logs whatever it returns.
             let wantsCallback = successURL != nil || errorURL != nil
             var query = wantsCallback
                 ? "nativeplayer://x-callback-url/play?url=\(encoded)"
                 : "nativeplayer://play?url=\(encoded)"
+            if let position, position > 0 {
+                query += "&position=\(Int(position))"
+            }
             if let title,
                let encodedTitle = title.addingPercentEncoding(
                    withAllowedCharacters: .externalPlayerURLValue

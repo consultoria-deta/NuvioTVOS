@@ -20,6 +20,28 @@ final class NativePlayerExternalTests: XCTestCase {
         XCTAssertFalse(launch.absoluteString.contains("movie.mkv?token"))
     }
 
+    func testNativePlayerLaunchURLCarriesResumePosition() {
+        // Native Player resumes an externally-launched URL only if the caller sends
+        // the start time (dev u/lexqqq), the same `position=<seconds>` Infuse takes.
+        let stream = URL(string: "https://cdn.example/movie.mkv")!
+        let launch = ExternalPlayer.nativePlayer.launchURL(
+            for: stream,
+            position: 754.0,
+            title: "Movie"
+        )!
+        XCTAssertTrue(launch.absoluteString.contains("position=754"))
+    }
+
+    func testNativePlayerLaunchURLOmitsZeroPosition() {
+        let stream = URL(string: "https://cdn.example/movie.mkv")!
+        let launch = ExternalPlayer.nativePlayer.launchURL(
+            for: stream,
+            position: 0,
+            title: "Movie"
+        )!
+        XCTAssertFalse(launch.absoluteString.contains("position="))
+    }
+
     func testNativePlayerUsesXCallbackFormWhenCallbacksPresent() {
         let stream = URL(string: "https://cdn.example/movie.mkv")!
         let success = URL(string: "nuvio-tv://external-playback/ABC-123")!
