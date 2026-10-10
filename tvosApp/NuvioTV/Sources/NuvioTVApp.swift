@@ -3679,8 +3679,11 @@ struct TVHomeView: View {
     @FocusState private var isLoadingFocusActive: Bool
     @FocusState private var focusedCardID: String?
 
-    var body: some View {
-        let _ = TVHomeDebugTrace.breadcrumb("home.body.render active=\(isActive) row=\(focusedRowIndex)")
+    // Split out of `body` so the Swift 26.6 type-checker doesn't have to solve the
+    // ZStack content plus all ~24 lifecycle modifiers as one expression (it times
+    // out: "unable to type-check in reasonable time"). Behavior is identical — same
+    // views, same modifiers, same order — just a `some View` boundary in the middle.
+    @ViewBuilder private var homeBodyFirstHalf: some View {
         ZStack(alignment: .topLeading) {
             // Keep TVHomeView mounted in TabView across tab switches so that
             // tab transitions are instantaneous (0ms) and focus/scroll state is preserved.
@@ -4126,6 +4129,10 @@ struct TVHomeView: View {
                 continueWatchingRefreshGeneration &+= 1
             }
         }
+    }
+
+    @ViewBuilder private var homeBodySecondHalf: some View {
+        homeBodyFirstHalf
         .onChange(of: continueWatchingSort) { _, _ in
             if !rawContinueWatchingItems.isEmpty {
                 setContinueWatching(rawContinueWatchingItems)
@@ -4254,6 +4261,11 @@ struct TVHomeView: View {
             finishSimklHomeLoadingDiagnostic()
             continueWatchingRefreshGeneration &+= 1
         }
+    }
+
+    var body: some View {
+        let _ = TVHomeDebugTrace.breadcrumb("home.body.render active=\(isActive) row=\(focusedRowIndex)")
+        homeBodySecondHalf
         .onChange(of: isLoading) { _, loading in
             TVHomeDebugTrace.log("home.onChange(isLoading) loading=\(loading) showsLoading=\(showsLoading)")
             if loading && showsLoading {
