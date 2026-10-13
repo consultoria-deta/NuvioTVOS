@@ -1,33 +1,42 @@
 {
-  "originHash": "a80a55e9dd01bcc8adc048d0bfd98915b64177ac59b07f8f06e618c57354638c",
-  "pins": [
+  "originHash" : "440a4194e79660d7967c17e75141fb8a2dccc54bbacd2ef05d652c9fce96ed21",
+  "pins" : [
     {
-      "identity": "libdovi",
-      "kind": "remoteSourceControl",
-      "location": "https://github.com/superuser404notfound/LibDovi",
-      "state": {
-        "revision": "0d7cce1d6836a30d13a3a2326e50a153af53f014",
-        "version": "2.1.0"
+      "identity" : "libdovi",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/superuser404notfound/LibDovi",
+      "state" : {
+        "revision" : "0d7cce1d6836a30d13a3a2326e50a153af53f014",
+        "version" : "2.1.0"
       }
     },
     {
-      "identity": "libtruehd",
-      "kind": "remoteSourceControl",
-      "location": "https://github.com/superuser404notfound/LibTrueHD",
-      "state": {
-        "revision": "c54b7eb8df054e9a4796a4fe4832650d615d9b49",
-        "version": "2.2.0"
+      "identity" : "libdtsx",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/kristofferR/LibDTSX",
+      "state" : {
+        "revision" : "d459e44e634b5b98884959017141309b381650dd",
+        "version" : "1.0.0"
       }
     },
     {
-      "identity": "smbclient",
-      "kind": "remoteSourceControl",
-      "location": "https://github.com/kishikawakatsumi/SMBClient",
-      "state": {
-        "revision": "e636c2b2458930770932a36d311ec9d478575b90",
-        "version": "0.3.1"
+      "identity" : "libtruehd",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/superuser404notfound/LibTrueHD",
+      "state" : {
+        "revision" : "577de495184254e2c660ebfd6ce3f7d97f45899d",
+        "version" : "2.3.0"
+      }
+    },
+    {
+      "identity" : "smbclient",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/kishikawakatsumi/SMBClient",
+      "state" : {
+        "revision" : "e636c2b2458930770932a36d311ec9d478575b90",
+        "version" : "0.3.1"
       }
     }
   ],
-  "version": 3
+  "version" : 3
 }

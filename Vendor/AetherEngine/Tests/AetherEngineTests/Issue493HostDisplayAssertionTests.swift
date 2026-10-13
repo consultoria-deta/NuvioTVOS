@@ -222,7 +222,7 @@ struct Issue493HostDisplayAssertionTests {
 
     /// The grades where it does, so non-DV displays (HDR10/HLG only) are not sent Dolby Vision supplemental
     /// codecs that cause AVPlayer master-manifest rejection (-11868):
-    /// - P7 needs the per-packet RPU conversion to 8.1 and its supplemental.
+    /// - P7 is converted to 8.1 on every display; its supplemental is gated like P8.1.
     /// - P8.1 and P8.4 gate their SUPPLEMENTAL-CODECS on dvDisplay (avoiding -11868 on HDR10-only displays).
     /// - AV1 DV record is read only on a display that takes it.
     @Test("AE#493: P7, P8.1, P8.4 and AV1 Dolby Vision are packaged conditionally by the claim")
@@ -230,8 +230,11 @@ struct Issue493HostDisplayAssertionTests {
         let p7Asserted = try Self.route(profile: 7, compat: 0, dvDisplay: true)
         let p7Control = try Self.route(profile: 7, compat: 0, dvDisplay: false)
         #expect(Self.packaging(p7Asserted) != Self.packaging(p7Control))
+        // Upstream converts P7 on every display; Nuvio still gates its SUPPLEMENTAL on the claim.
         #expect(p7Asserted.convertP7ToProfile81)
-        #expect(p7Control.convertP7ToProfile81 == false)
+        #expect(p7Control.convertP7ToProfile81)
+        #expect(p7Asserted.supplementalCodecs == "dvh1.08.06/db1p")
+        #expect(p7Control.supplementalCodecs == nil)
 
         let p81Asserted = try Self.route(profile: 8, compat: 1, trc: AVCOL_TRC_SMPTE2084, dvDisplay: true)
         let p81Control = try Self.route(profile: 8, compat: 1, trc: AVCOL_TRC_SMPTE2084, dvDisplay: false)

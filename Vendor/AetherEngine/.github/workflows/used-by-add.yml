@@ -26,7 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Normalise the issue body
         id: normalise
@@ -62,7 +62,7 @@ jobs:
 
       - name: Parse issue form
         id: parse
-        uses: stefanbuck/github-issue-parser@v3
+        uses: stefanbuck/github-issue-parser@cb6e97157cbf851e3a393ff8d57c93a484cc323f # v3.2.5
         with:
           template-path: .github/ISSUE_TEMPLATE/used-by-submission.yml
           issue-body: ${{ steps.normalise.outputs.body }}
@@ -151,7 +151,7 @@ jobs:
       - name: Open pull request
         if: steps.build.outputs.skip == 'false'
         id: pr
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
           # Only the README, so no stray runner file can ride along.
           add-paths: README.md

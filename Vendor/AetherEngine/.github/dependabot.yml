@@ -1,0 +1,9 @@
+version: 2
+updates:
+  # Third-party actions are pinned by commit SHA (audit OPS-2); this keeps the pins moving.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "chore(ci)"
