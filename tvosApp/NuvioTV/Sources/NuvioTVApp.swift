@@ -2796,17 +2796,26 @@ private struct CrossfadingBackdrop: View {
     @State private var imageOpacity = 1.0
 
     var body: some View {
-        GeometryReader { proxy in
+        // Read the displayed state outside the GeometryReader so the body
+        // depends on it. Reads that only happen inside the reader's content
+        // closure did not re-render when a load finished, so the new image
+        // only appeared on the next focus change (one title late).
+        let currentImage = image
+        let currentOutgoingImage = outgoingImage
+        let currentImageOpacity = imageOpacity
+        let currentOutgoingOpacity = outgoingOpacity
+        let currentLoadedURL = loadedURL
+        return GeometryReader { proxy in
             ZStack {
                 placeholder
-                if let outgoingImage {
-                    backdropImage(outgoingImage, size: proxy.size)
-                        .opacity(outgoingOpacity)
+                if let currentOutgoingImage {
+                    backdropImage(currentOutgoingImage, size: proxy.size)
+                        .opacity(currentOutgoingOpacity)
                 }
-                if let image {
-                    backdropImage(image, size: proxy.size)
-                        .opacity(imageOpacity)
-                        .id(loadedURL)
+                if let currentImage {
+                    backdropImage(currentImage, size: proxy.size)
+                        .opacity(currentImageOpacity)
+                        .id(currentLoadedURL)
                 }
             }
             // Portrait poster fallbacks must be cropped inside the screen, not

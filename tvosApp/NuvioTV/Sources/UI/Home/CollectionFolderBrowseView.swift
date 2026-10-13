@@ -873,7 +873,12 @@ private struct CollectionFolderHomeStyleRow: View {
 
     /// Horizontal scrolling strip matching Home's exact interactive spring animation.
     private var cardStrip: some View {
-        GeometryReader { geometry in
+        // Read the scroll position outside the GeometryReader so the row's body
+        // depends on it: a read that only happens inside the reader's content
+        // closure did not re-render the strip when focus moved, so the strip
+        // stayed put until something else (a page load) invalidated it.
+        let currentScrollIndex = scrollIndex
+        return GeometryReader { geometry in
             let edgeInset = max(0, geometry.frame(in: .global).minX)
             let stripWidth = geometry.size.width + edgeInset * 2
             let rowHomeLayout = layoutMode
@@ -938,7 +943,7 @@ private struct CollectionFolderHomeStyleRow: View {
             // Keep the first/focused card at the physical screen X=128 anchor.
             // The final offset cancels any safe-area origin retained by the
             // overlay's parent, so this works in both coordinate spaces.
-            .offset(x: CollectionFolderLayout.horizontalPadding - CGFloat(scrollIndex) * rowStep)
+            .offset(x: CollectionFolderLayout.horizontalPadding - CGFloat(currentScrollIndex) * rowStep)
             .frame(
                 width: stripWidth,
                 height: stripHeight,
