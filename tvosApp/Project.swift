@@ -48,7 +48,7 @@ let signingXCConfig: Path = .relativeToManifest("Configurations/Signing.xcconfig
 
 // MARK: - Shared values
 
-let bundleID = "com.pyksel.nuviotvos"
+let bundleID = "com.joelestrada.nuviotv"
 let marketingVersion = "3.4.3"
 let projectVersion = "74"
 // LibTrueHD 2.2.0 requires tvOS 18; APAC rendering itself is gated to tvOS 26+.
@@ -171,7 +171,9 @@ let appTarget: Target = .target(
         ),
     ],
     dependencies: [
-        .target(name: "TopShelf"),
+        // TopShelf removed for free-Apple-ID builds: it is a tvTopShelfExtension
+        // that needs the group.com.pyksel.nuviotvos App Group (paid account only).
+        // Re-add `.target(name: "TopShelf")` + topShelfTarget once signed with $99/yr.
         .package(product: "AetherEngine"),
         .package(product: "AetherEngineSMB"),
         .package(product: "LibTorrent"),
@@ -286,7 +288,7 @@ let project = Project(
         configurations: configurations(),
         defaultSettings: defaultSettings
     ),
-    targets: [appTarget, topShelfTarget, unitTestsTarget],
+    targets: [appTarget, unitTestsTarget],
     schemes: [
         .scheme(
             name: "NuvioTV",
