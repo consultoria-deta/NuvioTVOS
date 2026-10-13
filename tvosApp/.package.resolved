@@ -19,12 +19,21 @@
       }
     },
     {
+      "identity" : "libdtsx",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/kristofferR/LibDTSX",
+      "state" : {
+        "revision" : "d459e44e634b5b98884959017141309b381650dd",
+        "version" : "1.0.0"
+      }
+    },
+    {
       "identity" : "libtruehd",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/superuser404notfound/LibTrueHD",
       "state" : {
-        "revision" : "c54b7eb8df054e9a4796a4fe4832650d615d9b49",
-        "version" : "2.2.0"
+        "revision" : "577de495184254e2c660ebfd6ce3f7d97f45899d",
+        "version" : "2.3.0"
       }
     },
     {
@@ -55,21 +64,21 @@
       }
     },
     {
-      "identity" : "swift-issue-reporting",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/pointfreeco/swift-issue-reporting",
-      "state" : {
-        "revision" : "75b000cea2ca6d7527a57e1b9cc0bdf21a9abe9f",
-        "version" : "2.1.1"
-      }
-    },
-    {
       "identity" : "swift-libass",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/mihai8804858/swift-libass",
       "state" : {
         "revision" : "6513c488e377a26c06db327fb2acfc2653a041d5",
         "version" : "1.4.0"
+      }
+    },
+    {
+      "identity" : "xctest-dynamic-overlay",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/pointfreeco/xctest-dynamic-overlay",
+      "state" : {
+        "revision" : "d9308ad679143c26a30dec52daefe82f54af2b82",
+        "version" : "1.13.1"
       }
     }
   ],
