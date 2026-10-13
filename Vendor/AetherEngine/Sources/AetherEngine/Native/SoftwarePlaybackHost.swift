@@ -741,6 +741,9 @@ final class SoftwarePlaybackHost {
     /// Set by the engine on background-enter (iOS keepalive) and cleared on foreground. While true the
     /// combined demux loop drops video packets and paces on the audio renderer, so audio keeps playing in
     /// the background. The setter broadcasts the demux condition so a parked loop re-evaluates immediately.
+    /// AE#739: the hardware decoder lost its session while nothing could act on it, or VT refused the
+    /// rebuild. Paid by `exitBackgroundAudioOnly()`. Main actor only.
+    private var videoSessionRecoveryOwed = false
     nonisolated(unsafe) private var _backgroundAudioOnly = false
     nonisolated var backgroundAudioOnly: Bool {
         get { flagsLock.lock(); defer { flagsLock.unlock() }; return _backgroundAudioOnly }
@@ -1005,6 +1008,9 @@ final class SoftwarePlaybackHost {
         }
         videoDecoder.onDecodedFormat = { [weak self] format in
             self?.onDecodedVideoFormat?(format)
+        }
+        (videoDecoder as? HardwareVideoDecoder)?.onSessionLost = { [weak self] in
+            Task { @MainActor [weak self] in self?.handleVideoSessionLost() }
         }
         videoDecoder.onA53Captions = { [weak self] triplets, pts in
             self?.onA53Captions?(triplets, pts)
@@ -1365,7 +1371,10 @@ final class SoftwarePlaybackHost {
 
     /// Background-enter (iOS keepalive): keep audio flowing, stop feeding video. The demux loop reads the flag.
     func enterBackgroundAudioOnly() {
+        guard !backgroundAudioOnly else { return }
         backgroundAudioOnly = true
+        EngineLog.emit("[SWHost] background audio-only: dropping video, audio keeps playing",
+                       category: .swPlayback)
         if demuxDiag.snapshot.rebuffering {
             _ = demuxDiag.setRebuffering(false, generation: seekGeneration)
             if isPlaying {
@@ -1381,11 +1390,74 @@ final class SoftwarePlaybackHost {
     /// next keyframe; the synchronizer is already at the audio time, so the keyframe presents promptly. Order
     /// matters: while backgroundAudioOnly is still true the loop drops video and never touches videoDecoder /
     /// renderer, so flushing here from the main actor cannot race the demux queue. Clear the flag last.
+    ///
+    /// AE#739: the hardware session is rebuilt unconditionally. A screen lock invalidates it, and in
+    /// audio-only mode nothing decodes video, so nothing could have noticed. Called on every foreground
+    /// return, so a recovery owed from a loss seen outside audio-only mode (a PiP session, a refused
+    /// rebuild) is paid here as well.
     func exitBackgroundAudioOnly() {
-        guard backgroundAudioOnly else { return }
-        videoDecoder.flush()
-        renderer.flush()
-        backgroundAudioOnly = false
+        if backgroundAudioOnly {
+            videoDecoder.flush()
+            renderer.flush()
+            let rebuilt = (videoDecoder as? HardwareVideoDecoder)?.rebuildSession()
+            if rebuilt == false { videoSessionRecoveryOwed = true }
+            backgroundAudioOnly = false
+            EngineLog.emit(
+                "[SWHost] background audio-only left, video resumes at the next keyframe"
+                + (rebuilt.map { ", hardware session rebuilt=\($0)" } ?? ""),
+                category: .swPlayback)
+        }
+        if videoSessionRecoveryOwed { recoverVideoSession() }
+    }
+
+    #if DEBUG
+    func invalidateVideoSessionForTesting() -> Bool {
+        guard let hw = videoDecoder as? HardwareVideoDecoder else { return false }
+        hw.invalidateSessionForTesting()
+        return true
+    }
+    #endif
+
+    /// AE#739: the hardware decoder reported its session invalidated by the system. In audio-only mode
+    /// video is not wanted yet, so the recovery is owed to the foreground return.
+    private func handleVideoSessionLost() {
+        guard !stopRequested else { return }
+        if backgroundAudioOnly {
+            videoSessionRecoveryOwed = true
+            EngineLog.emit("[SWHost] AE#739 video session lost in the background, recovery owed to the foreground return",
+                           category: .swPlayback)
+            return
+        }
+        recoverVideoSession()
+    }
+
+    /// Rebuild the session, then reposition to the playhead: the demuxer lands on the keyframe before it
+    /// and the seek's skip threshold hides the preroll, so the picture returns on the frame the audio is
+    /// at instead of freezing until the next keyframe. A live source without a rewind ring cannot go
+    /// back and picks up at the next keyframe. A refused rebuild stays owed to the next foreground return.
+    private func recoverVideoSession() {
+        guard !stopRequested, let hw = videoDecoder as? HardwareVideoDecoder else {
+            videoSessionRecoveryOwed = false
+            return
+        }
+        guard hw.rebuildSession() else {
+            videoSessionRecoveryOwed = true
+            return
+        }
+        videoSessionRecoveryOwed = false
+        if isLive && dvrRing == nil {
+            EngineLog.emit("[SWHost] AE#739 video session rebuilt on a live source, resuming at the next keyframe",
+                           category: .swPlayback)
+            return
+        }
+        let target = currentTime
+        EngineLog.emit(
+            "[SWHost] AE#739 video session rebuilt, repositioning to the playhead at "
+            + "\(String(format: "%.3f", target))s",
+            category: .swPlayback)
+        Task { @MainActor [weak self] in
+            await self?.seek(to: target)
+        }
     }
 
     func setRate(_ newRate: Float) {

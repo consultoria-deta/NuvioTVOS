@@ -2,12 +2,12 @@ import Foundation
 import AetherLibavcodec
 import AetherLibavutil
 
-/// TrueHD Atmos in, APAC out: decodes the object presentation, renders its beds and objects into a
-/// `SpatialSpeakerLayout` bed and encodes that as Apple Positional Audio, which tvOS delivers to an
-/// Atmos receiver as Dolby MAT with the heights intact.
+/// TrueHD Atmos or DTS:X in, APAC out: decodes the object presentation, renders its beds and objects
+/// into a `SpatialSpeakerLayout` bed and encodes that as Apple Positional Audio, which tvOS delivers
+/// to an Atmos receiver as Dolby MAT with the heights intact.
 ///
-/// The FLAC bridge keeps TrueHD lossless but can only carry the 7.1 presentation, so every height
-/// and every object position is gone before the audio leaves the engine. This bridge trades the
+/// The FLAC bridge keeps TrueHD and DTS-HD lossless but can only carry the 7.1 presentation, so every
+/// height and every object position is gone before the audio leaves the engine. This bridge trades the
 /// lossless bed for the Atmos mix: APAC is lossy, at a few Mbit/s, several times the rate streaming
 /// services deliver Atmos at.
 ///
@@ -101,7 +101,9 @@ final class SpatialAudioBridge: AudioTranscodingBridge, @unchecked Sendable {
     /// on Dolby's Unfold demo, that wait was up to 102 access units; at 64 every resume past the
     /// opening seconds was reported as a dead decoder and the session went to `.error` while it
     /// played, ignoring every seek after it. 1200 is a second of TrueHD, still a fraction of a second
-    /// of the producer's time.
+    /// of the producer's time. A DTS-HD packet is a 512-frame frame, so for DTS:X it is 12.8 s; the
+    /// track was confirmed as DTS:X before the bridge was built, and its decoder outputs from the
+    /// third packet after every reset.
     static let silentFeedPacketThreshold = 1200
     /// Three 2048-frame chunks are about 128 ms: enough to tolerate an isolated converter error,
     /// while reporting a persistent silent APAC output quickly.
@@ -260,7 +262,7 @@ final class SpatialAudioBridge: AudioTranscodingBridge, @unchecked Sendable {
               stats.packetsFedSinceLastEnqueue >= Self.silentFeedPacketThreshold else { return }
         decodedNothingReported = true
         EngineLog.emit(
-            "[SpatialAudioBridge] ERROR: AE#641 the TrueHD object decoder has produced nothing: "
+            "[SpatialAudioBridge] ERROR: AE#641 the object decoder has produced nothing: "
             + "\(stats.summary)", category: .session)
         onDecoderProducedNothing?(stats)
     }
@@ -269,6 +271,9 @@ final class SpatialAudioBridge: AudioTranscodingBridge, @unchecked Sendable {
         opLock.lock()
         defer { opLock.unlock() }
         var results: [UnsafeMutablePointer<AVPacket>] = []
+        // Audio the decoder holds for metadata sits before the cut; released here, the cut sees what
+        // it saw before the hold existed, rather than up to 100 ms of it landing in the next segment.
+        renderHeldBlocks(into: &results)
         let settled = pipeline.settle()
         consumeEncoded(settled.events, into: &results)
         return results
@@ -280,6 +285,8 @@ final class SpatialAudioBridge: AudioTranscodingBridge, @unchecked Sendable {
         guard !drainedAtEOF else { return [] }
         drainedAtEOF = true
         var results: [UnsafeMutablePointer<AVPacket>] = []
+        // Audio the decoder held back for metadata that never came plays as it is.
+        renderHeldBlocks(into: &results)
         encodePending()
         logLevels(levelMeter.restart())
         let finished = pipeline.finish()
@@ -334,6 +341,19 @@ final class SpatialAudioBridge: AudioTranscodingBridge, @unchecked Sendable {
     }
 
     // MARK: - Pipeline
+
+    /// Caller holds `opLock`.
+    private func renderHeldBlocks(into results: inout [UnsafeMutablePointer<AVPacket>]) {
+        decoder.releaseHeldBlocks()
+        do {
+            while let block = try decoder.nextBlock() {
+                stats.framesDecoded += 1
+                try renderAndEncode(block, into: &results)
+            }
+        } catch {
+            EngineLog.emit("[SpatialAudioBridge] drain of held blocks failed: \(error)", category: .session)
+        }
+    }
 
     private func renderAndEncode(_ block: ObjectAudioDecodedBlock, into results: inout [UnsafeMutablePointer<AVPacket>]) throws {
         guard block.sampleRate == Self.sampleRate else { throw BridgeError.unsupportedSampleRate(block.sampleRate) }

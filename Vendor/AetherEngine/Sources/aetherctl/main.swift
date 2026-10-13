@@ -129,8 +129,10 @@ func printUsage() {
                          (#35/#37/#38: rapid-seek burst, wedge report, seek-event ledger)
       aetherctl pktdump [--at S] [--count N] [--profile playback|restartReopen|stillExtraction] <url>
                         (raw demuxer packet timing, before dts repair and muxing)
-      aetherctl bgaudio [--fg N] [--bg N] <url>
-                        (SW-path background audio headless on macOS; DEBUG builds only)
+      aetherctl bgaudio [--fg N] [--bg N] [--lose-session] <url>
+                        (SW-path background audio headless on macOS; DEBUG builds only.
+                         --lose-session invalidates the VT session mid-foreground and
+                         on entering background, as an iOS screen lock does, AE#739)
       aetherctl smbtest [--reads N] <smb-url>
                         (SMB byte source: throughput pass + random-seek consistency; macOS)
       aetherctl <url>             (alias for `serve`)
@@ -380,14 +382,16 @@ if first == "bgaudio" {
     var rest = Array(args.dropFirst(2))
     let fg = takeDoubleFlag("--fg", in: 0...maxRunSeconds, from: &rest) ?? 3.0
     let bg = takeDoubleFlag("--bg", in: 0...maxRunSeconds, from: &rest) ?? 6.0
+    let loseSession = takeFlag("--lose-session", from: &rest)
     guard let urlArg = rest.first(where: { !$0.hasPrefix("--") }) else {
         print("ERROR: bgaudio requires a <url> argument")
-        print("Usage: aetherctl bgaudio [--fg N] [--bg N] <url>")
+        print("Usage: aetherctl bgaudio [--fg N] [--bg N] [--lose-session] <url>")
         exit(64)
     }
     rest.removeAll { $0 == urlArg }
     rejectStrayFlags(rest, subcommand: "bgaudio")
-    exit(runBackgroundAudio(url: parseSourceURL(urlArg), fgSeconds: fg, bgSeconds: bg))
+    exit(runBackgroundAudio(url: parseSourceURL(urlArg), fgSeconds: fg, bgSeconds: bg,
+                            loseSession: loseSession))
 }
 
 if first == "smbtest" {
@@ -991,7 +995,7 @@ if ["probe", "serve", "validate", "swdecode", "extract", "audio", "customio"].co
     // be read straight off the segments (ffprobe the audio and video first-packet PTS) instead of
     // being judged by ear.
     let serveAudioDelayMs = takeIntFlag("--audio-delay", from: &rest) ?? 0
-    // #731: TrueHD Atmos rendered into a speaker bed and served as APAC (LoadOptions.objectAudioRendering).
+    // #731: TrueHD Atmos or DTS:X rendered into a speaker bed and served as APAC (LoadOptions.objectAudioRendering).
     let atmosBedFlag = takeStringFlag("--atmos-bed", from: &rest)
     let serveObjectAudioRendering: ObjectAudioRendering
     if let atmosBedFlag {

@@ -1417,6 +1417,17 @@ final class AVIOReader: AVIOProvider, @unchecked Sendable {
             }
         }
 
+        // AE#733: the AE#140/#154 classification above only reads the persistent window, and a
+        // forward-only open (no size, or an origin that ignores Range) leaves that window empty. A
+        // playlist endpoint answering 200 without a length lands exactly there, so the same check
+        // runs on the stream's first bytes before FFmpeg is handed the m3u8 as container bytes.
+        if isStreaming, Self.bodyBeginsWithHLSPlaylistTag(firstStreamPrefix()) {
+            EngineLog.emit("[AVIOReader] \(label) HLS playlist body on the forward-only open (AE#733); rerouting like AE#140/#154.", category: .demux)
+            markClosed()
+            close()
+            throw isLive ? AVIOReaderError.hlsPlaylistOnRawLivePath : AVIOReaderError.hlsPlaylistOnVODPath
+        }
+
         // #126: a VOD source that finishes open() without a resolved size runs the forward-only
         // streaming reader; FFmpeg must not believe pb is seekable. With a seekable-flagged pb the
         // mov demuxer far-forward-skips to a tail moov (buffering the entire skipped span in RAM),
@@ -1556,6 +1567,14 @@ final class AVIOReader: AVIOProvider, @unchecked Sendable {
         defer { winCond.unlock() }
         let n = Swift.min(max, window.count)
         return window.prefix(n)
+    }
+
+    /// Leading bytes of the forward-only stream at open, before any read has consumed them.
+    private func firstStreamPrefix(max: Int = 16) -> [UInt8] {
+        streamLock.lock()
+        defer { streamLock.unlock() }
+        guard streamBytesRead == 0 else { return [] }
+        return streamBuffer.prefix(max)
     }
 
     /// True when a body's leading bytes are the HLS playlist tag `#EXTM3U`, tolerating a UTF-8 BOM and

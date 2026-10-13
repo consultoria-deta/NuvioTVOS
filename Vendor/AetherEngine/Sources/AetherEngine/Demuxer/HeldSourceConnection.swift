@@ -448,7 +448,7 @@ extension HeldSourceConnection {
                              host: String,
                              port: Int,
                              secure: Bool,
-                             offset: Int64,
+                             offset: Int64?,
                              extraHeaders: [String: String],
                              userAgent: String?) throws -> Data {
         // Audit DMX-4: the path goes on the wire as the URL spells it. `URL.path` is decoded, so
@@ -463,12 +463,13 @@ extension HeldSourceConnection {
         // A non-default port belongs in Host, since the origin may route on it.
         let hostHeader = (secure && port == 443) || (!secure && port == 80) ? hostName : "\(hostName):\(port)"
 
+        // A nil offset is a whole-resource GET (AE#732's segment fetches), which carries no Range.
         var lines = ["GET \(path) HTTP/1.1",
-                     "Host: \(hostHeader)",
-                     "Range: bytes=\(offset)-",
-                     "Accept: */*",
-                     "Accept-Encoding: identity",
-                     "Connection: keep-alive"]
+                     "Host: \(hostHeader)"]
+        if let offset { lines.append("Range: bytes=\(offset)-") }
+        lines += ["Accept: */*",
+                  "Accept-Encoding: identity",
+                  "Connection: keep-alive"]
         if let userAgent { lines.append("User-Agent: \(userAgent)") }
         // The caller's headers win: they carry the source's authentication, and a duplicate of a
         // header set above would be sent twice.

@@ -550,6 +550,10 @@ public final class HLSVideoEngine: @unchecked Sendable {
     /// off the HDMI route has to know that, or it reads the carrier as a downmix.
     public internal(set) var audioIsAtmosStreamCopy = false
 
+    /// The audio is TrueHD Atmos or DTS:X rendered to APAC (`objectAudioRendering`), which on tvOS needs
+    /// `AtmosOutputActivator` beside the player to reach the receiver as Atmos.
+    var audioIsAPAC = false
+
     /// Producer's `videoShiftPts` in seconds, updated on every gate open. AVPlayer clock =
     /// `source_pts - playlistShiftSeconds`. Lock-guarded: written on pump thread, read on others.
     public var playlistShiftSeconds: Double {
@@ -1147,7 +1151,7 @@ public final class HLSVideoEngine: @unchecked Sendable {
     /// EAC3 from MKV without dec3 extradata).
     let audioBridgeMode: AudioBridgeMode
 
-    /// TrueHD Atmos delivery (#731, see `ObjectAudioRendering`); consulted before `audioBridgeMode`.
+    /// TrueHD Atmos and DTS:X delivery (#731, see `ObjectAudioRendering`); consulted before `audioBridgeMode`.
     let objectAudioRendering: ObjectAudioRendering
 
     /// Pre-opened demuxer reused by `start()` to skip `avformat_find_stream_info` (~1-3 s on slow CDN).
@@ -1861,7 +1865,11 @@ public final class HLSVideoEngine: @unchecked Sendable {
                           + (Self.spatialRenderingLayout(
                                 rendering: objectAudioRendering, codecID: acpForHE.codec_id,
                                 profile: acpForHE.profile, sampleRate: acpForHE.sample_rate)
-                             .map { "Atmos object render into \($0.rawValue), APAC" }
+                             .map { layout in
+                                 Self.objectAudioSource(codecID: acpForHE.codec_id, profile: acpForHE.profile) == .trueHDAtmos
+                                     ? "Atmos object render into \(layout.rawValue), APAC"
+                                     : "DTS:X render into \(layout.rawValue) if LibDTSX confirms DTS:X, APAC"
+                             }
                              ?? Self.encoderLabel(AudioBridge.bridgeEncoder(
                                 for: audioBridgeMode,
                                 sourceChannels: acpForHE.ch_layout.nb_channels)).uppercased())
@@ -1986,6 +1994,7 @@ public final class HLSVideoEngine: @unchecked Sendable {
             streamCopyAudio: streamCopyAudio,
             sourceAudioStreamIndex: audioStreamIndex,
             sourceAudioStream: audioStreamIndex >= 0 ? audioDem.stream(at: audioStreamIndex) : nil,
+            audioDemuxer: audioDem,
             sourceCarriesAudio: audioDem.firstAudioStreamIndexByType >= 0,
             audioHLSCodecs: &audioHLSCodecs,
             audioLanguage: audioLanguage

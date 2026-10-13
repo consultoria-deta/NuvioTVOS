@@ -247,6 +247,8 @@ final class DocumentedConstantsTests: XCTestCase {
         assertDocumented("after the first 5 s of audio (and again after every seek), then every 30 s", docs)
         XCTAssertEqual(SpatialAudioBridge.silentFeedPacketThreshold, 1200)
         assertDocumented("returns nothing for 1200 packets in a row, a second of TrueHD", docs)
+        XCTAssertEqual(ObjectMetadataHold.maxHeldFrames, 4_800)
+        assertDocumented("(it waits at most 100 ms)", docs)
         XCTAssertEqual(APACSampleEntry.codecsString(channelCount: 12), "apac.31.03")
         XCTAssertEqual(APACSampleEntry.codecsString(channelCount: 16), "apac.31.04")
     }
