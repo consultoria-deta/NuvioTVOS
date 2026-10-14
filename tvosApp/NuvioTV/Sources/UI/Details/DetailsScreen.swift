@@ -590,6 +590,10 @@ struct DetailsScreen: View {
         guard let meta = viewModel.uiState.meta else { return }
         streamPickerAvailabilityMessage = nil
 
+        if !forceManualPicker, playReusedLastLinkIfAvailable(meta: meta) {
+            return
+        }
+
         if forceManualPicker || !smartStreamSelection {
             cancelStartupRequest()
             isSmartPlaybackPending = false
@@ -612,6 +616,46 @@ struct DetailsScreen: View {
             viewModel.prepareStreams(forId: streamId, type: type, forceRefresh: true)
         }
         finishSmartPlaybackIfPossible(meta: meta)
+    }
+
+    /// Reuse Last Link (Android TV parity): play the last link used for this
+    /// movie / pending episode while it is inside the configured cache window,
+    /// before Auto Select or the picker. A dead link is handled by the player's
+    /// existing failover (it drops the stored link and resolves another stream).
+    private func playReusedLastLinkIfAvailable(meta: NuvioMeta) -> Bool {
+        let store = ProfileSettings.current
+        guard ReuseLastLinkSettings.isEnabled(store),
+              let stored = LastPlaybackStreamStore.load(
+                  metaId: meta.id,
+                  season: pendingEpisode?.season,
+                  episode: pendingEpisode?.episode,
+                  profileId: ProfileSettings.activeProfileID,
+                  maxAge: ReuseLastLinkSettings.maxAge(store)
+              ) else {
+            return false
+        }
+        cancelStartupRequest()
+        isSmartPlaybackPending = false
+        isResolvingDebrid = false
+        isPreparingPlayback = true
+        isStreamPickerPresented = false
+        onPlayClick(
+            stored.url,
+            stored.httpHeaders,
+            meta,
+            pendingEpisodeSubtitle,
+            [],
+            pendingEpisode,
+            orderedEpisodes(for: meta),
+            nil,
+            nil,
+            nil,
+            nil,
+            nil,
+            nil,
+            nil
+        )
+        return true
     }
 
     private func finishSmartPlaybackIfPossible(meta explicitMeta: NuvioMeta? = nil) {
@@ -2779,6 +2823,7 @@ struct TvDetailsContent: View {
     @Environment(\.isEnabled) private var isEnabled
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(SettingsKey.smartStreamSelection) private var smartStreamSelection = false
+    @AppStorage(SettingsKey.streamReuseLastLinkEnabled) private var streamReuseLastLinkEnabled = false
     @AppStorage(SettingsKey.trailersEnabled) private var trailersEnabled = true
     @AppStorage(SettingsKey.backgroundTrailersEnabled) private var backgroundTrailersEnabled = true
     @AppStorage(SettingsKey.trailerPreviewSound) private var trailerPreviewSound = false
@@ -3014,11 +3059,13 @@ struct TvDetailsContent: View {
             playTitle: playTarget.label,
             playHint: smartStreamSelection
                 ? L10n.string("details_play_hint_smart", fallback: "Plays the best link. Hold Select to choose a source manually.")
-                : L10n.string("details_play_hint", fallback: "Starts playback or opens stream sources"),
+                : streamReuseLastLinkEnabled
+                    ? L10n.string("details_play_hint_reuse_last_link", fallback: "Plays your last link when available. Hold Select to choose a source manually.")
+                    : L10n.string("details_play_hint", fallback: "Starts playback or opens stream sources"),
             onPlayClick: {
                 handlePlayClick(playTarget: playTarget)
             },
-            onPlayLongPress: smartStreamSelection ? {
+            onPlayLongPress: (smartStreamSelection || streamReuseLastLinkEnabled) ? {
                 handlePlayLongPress(playTarget: playTarget)
             } : nil,
             onWatchlistClick: onWatchlistClick,
@@ -6305,6 +6352,7 @@ private struct TvDetailsEpisodes: View {
     @State private var userDidSelectSeason = false
     @AppStorage(SettingsKey.smoothFocus) private var smoothFocus = true
     @AppStorage(SettingsKey.smartStreamSelection) private var smartStreamSelection = false
+    @AppStorage(SettingsKey.streamReuseLastLinkEnabled) private var streamReuseLastLinkEnabled = false
 
     init(
         meta: NuvioMeta,
@@ -6551,7 +6599,8 @@ private struct TvDetailsEpisodes: View {
                         onMenuClosed: { onEpisodeMenuPresented(false) },
                         action: { onSelect(video) },
                         onPlayManually: onPlayManually != nil ? { onPlayManually?(video) } : nil,
-                        smartStreamSelection: smartStreamSelection,
+                        // Gates "Choose Source Manually": also useful when Reuse Last Link skips the picker.
+                        smartStreamSelection: smartStreamSelection || streamReuseLastLinkEnabled,
                         onBack: onBack,
                         focus: episodeFocus,
                         restrictFocusToKey: effectiveFocusRestriction,

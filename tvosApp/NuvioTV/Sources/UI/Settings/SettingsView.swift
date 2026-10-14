@@ -281,6 +281,8 @@ enum SettingsKey {
     static let autoPlayNextCountdown = "nuvio.tv.settings.playback.autoPlayNextCountdown"
     static let streamAutoPlayPreferBingeGroup = "nuvio.tv.settings.playback.streamAutoPlayPreferBingeGroup"
     static let streamAutoPlayReuseBingeGroup = "nuvio.tv.settings.playback.streamAutoPlayReuseBingeGroup"
+    static let streamReuseLastLinkEnabled = "nuvio.tv.settings.playback.streamReuseLastLinkEnabled"
+    static let streamReuseLastLinkCacheHours = "nuvio.tv.settings.playback.streamReuseLastLinkCacheHours"
     static let postPlayRecommendationsEnabled = "nuvio.tv.settings.playback.postPlayRecommendationsEnabled"
     static let trailersEnabled = "nuvio.tv.settings.playback.trailersEnabled"
     static let backgroundTrailersEnabled = "nuvio.tv.settings.playback.backgroundTrailersEnabled"
@@ -367,7 +369,7 @@ enum SettingsKey {
         jellyfinServers, jellyfinLibraryIndex, jellyfinLocalRowEnabled,
         playerEngine, trueHDSpatialAudio, trickplayServer, externalPlayer, smartStreamSelection, smartStreamUseTopResult, smartStreamQuality, smartSubtitleMatching,
         cachedOnlyStreams, preferHardwareDecodedStreams, preserveAddonStreamOrder, streamSortOption, streamBadgeRules, showFileSizeBadges, showAddonLogo, streamBadgePlacement,
-        autoPlayNext, autoPlayNextCountdown, streamAutoPlayPreferBingeGroup, streamAutoPlayReuseBingeGroup, postPlayRecommendationsEnabled, trailersEnabled, backgroundTrailersEnabled, trailerPreviewSound, trailerDelay,
+        autoPlayNext, autoPlayNextCountdown, streamAutoPlayPreferBingeGroup, streamAutoPlayReuseBingeGroup, streamReuseLastLinkEnabled, streamReuseLastLinkCacheHours, postPlayRecommendationsEnabled, trailersEnabled, backgroundTrailersEnabled, trailerPreviewSound, trailerDelay,
         focusedPosterBackdropEnabled, focusedPosterBackdropDelay, audioLanguage,
         subtitleLanguages, subtitleLanguage, subtitleLanguageSecondary, subtitleLanguageTertiary,
         forcedSubtitles, subtitleSize, frameRateMatching, networkCache, hybridDiskCacheEnabled, hybridDiskCacheLimitGB, playbackTrackSelections, showAudioLanguages,
@@ -7556,6 +7558,27 @@ private struct PlaybackSettingsView: View {
     @AppStorage(SettingsKey.autoPlayNext) private var autoPlayNext = true
     @AppStorage(SettingsKey.streamAutoPlayPreferBingeGroup) private var streamAutoPlayPreferBingeGroup = true
     @AppStorage(SettingsKey.streamAutoPlayReuseBingeGroup) private var streamAutoPlayReuseBingeGroup = true
+    @AppStorage(SettingsKey.streamReuseLastLinkEnabled) private var streamReuseLastLinkEnabled = false
+    @AppStorage(SettingsKey.streamReuseLastLinkCacheHours) private var streamReuseLastLinkCacheHours = ReuseLastLinkSettings.defaultCacheHours
+
+    private static func reuseLastLinkCacheLabel(_ hours: Int) -> String {
+        if hours >= 24, hours % 24 == 0 {
+            let days = hours / 24
+            return days == 1 ? "24 hours" : "\(days) days"
+        }
+        return hours == 1 ? "1 hour" : "\(hours) hours"
+    }
+
+    private var reuseLastLinkCacheSelection: Binding<String> {
+        Binding(
+            get: { Self.reuseLastLinkCacheLabel(streamReuseLastLinkCacheHours) },
+            set: { label in
+                if let hours = ReuseLastLinkSettings.cacheHourOptions.first(where: { Self.reuseLastLinkCacheLabel($0) == label }) {
+                    streamReuseLastLinkCacheHours = hours
+                }
+            }
+        )
+    }
     @AppStorage(SettingsKey.seekPreviewEnabled) private var seekPreviewEnabled = true
     @AppStorage(SettingsKey.showLoadingStatus) private var showLoadingStatus = true
     @AppStorage(SettingsKey.postPlayRecommendationsEnabled) private var postPlayRecommendationsEnabled = true
@@ -7821,6 +7844,29 @@ private struct PlaybackSettingsView: View {
             }
 
             SettingsGroup(title: L10n.string("tvos_settings_smart_playback", fallback: "Smart Playback"), subtitle: L10n.string("tvos_settings_automatically_choose_streams_and_matchin_9ca69e9f", fallback: "Automatically choose streams and matching subtitles")) {
+                SettingsToggleRow(
+                    title: L10n.string("tvos_settings_reuse_last_link", fallback: "Reuse Last Link"),
+                    subtitle: L10n.string(
+                        "tvos_settings_reuse_last_link_subtitle",
+                        fallback: "Auto-play your last working stream for this same movie/episode when cache is still valid. Hold Play on details to pick manually."
+                    ),
+                    isOn: $streamReuseLastLinkEnabled,
+                    accentColor: accentColor
+                )
+
+                SettingsOptionRow(
+                    title: L10n.string("tvos_settings_last_link_cache", fallback: "Last Link Cache"),
+                    subtitle: L10n.string(
+                        "tvos_settings_last_link_cache_subtitle",
+                        fallback: "How long a last link stays reusable. Debrid links can expire sooner; a dead link falls back to a fresh source."
+                    ),
+                    selection: reuseLastLinkCacheSelection,
+                    options: ReuseLastLinkSettings.cacheHourOptions.map(Self.reuseLastLinkCacheLabel),
+                    accentColor: accentColor
+                )
+                .opacity(streamReuseLastLinkEnabled ? 1 : 0.46)
+                .disabled(!streamReuseLastLinkEnabled)
+
                 SettingsToggleRow(
                     title: L10n.string("tvos_settings_auto_select_stream", fallback: "Auto Select Stream"),
                     subtitle: L10n.string("tvos_settings_skip_the_stream_picker_and_choose_the_be_da51db1f", fallback: "Skip the stream picker and choose the best link. Hold Play on details to pick manually."),

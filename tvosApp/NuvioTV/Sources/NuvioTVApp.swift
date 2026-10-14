@@ -1245,21 +1245,12 @@ struct ContentView: View {
         // Read the active profile directly at tap time. ContentView's own
         // @AppStorage would use the standard store before the descendant
         // defaultAppStorage environment is applied.
-        let smartStreamSelection = ProfileSettings.store(
-            for: profileViewModel.activeProfile?.id
-        ).bool(forKey: SettingsKey.smartStreamSelection)
-
-        // Normal resume must let the viewer choose a source when Smart Playback
-        // is disabled. Start from beginning deliberately keeps its existing
-        // direct/resolve path so it still starts at zero.
-        if !startFromBeginning, !smartStreamSelection {
-            playContinueWatchingManually(item)
-            return
-        }
-
-        let context = Self.episodeContext(for: item)
-        playbackEpisodes = context.episodes
-        playbackCurrentEpisode = context.current
+        let profileStore = ProfileSettings.store(for: profileViewModel.activeProfile?.id)
+        let smartStreamSelection = profileStore.bool(forKey: SettingsKey.smartStreamSelection)
+        let reuseLastLink = ReuseLastLinkSettings.isEnabled(profileStore)
+        let lastLinkMaxAge = reuseLastLink
+            ? ReuseLastLinkSettings.maxAge(profileStore)
+            : LastPlaybackStreamStore.remoteStreamTTL
 
         let profileId = profileViewModel.activeProfile?.id
         let storedStream = item.isUpNextEntry
@@ -1268,8 +1259,22 @@ struct ContentView: View {
                 metaId: item.meta.id,
                 season: item.season,
                 episode: item.episode,
-                profileId: profileId
+                profileId: profileId,
+                maxAge: lastLinkMaxAge
             )
+
+        // Normal resume must let the viewer choose a source when Smart Playback
+        // is disabled, unless Reuse Last Link has a fresh link for this title.
+        // Start from beginning deliberately keeps its existing direct/resolve
+        // path so it still starts at zero.
+        if !startFromBeginning, !smartStreamSelection, !(reuseLastLink && storedStream != nil) {
+            playContinueWatchingManually(item)
+            return
+        }
+
+        let context = Self.episodeContext(for: item)
+        playbackEpisodes = context.episodes
+        playbackCurrentEpisode = context.current
         let streamURL = storedStream?.url ?? ""
         let httpHeaders = storedStream?.httpHeaders ?? [:]
         if !streamURL.isEmpty, let url = URL(string: streamURL) {

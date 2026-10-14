@@ -620,7 +620,8 @@ enum LastPlaybackStreamStore {
         season: Int?,
         episode: Int?,
         profileId: String? = nil,
-        now: Date = Date()
+        now: Date = Date(),
+        maxAge: TimeInterval = remoteStreamTTL
     ) -> (url: String, httpHeaders: [String: String])? {
         let trimmedMetaId = metaId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedMetaId.isEmpty else { return nil }
@@ -634,7 +635,7 @@ enum LastPlaybackStreamStore {
            record.episode == episode {
             if isRemoteExpiringURL(record.url) {
                 if let savedAt = record.savedAt {
-                    if now.timeIntervalSince(savedAt) > remoteStreamTTL {
+                    if now.timeIntervalSince(savedAt) > maxAge {
                         records.removeValue(forKey: trimmedMetaId)
                         persistRecords(records, profileId: profileId)
                         return nil
@@ -656,7 +657,7 @@ enum LastPlaybackStreamStore {
             store.removeObject(forKey: key)
             if record.season == season, record.episode == episode {
                 if isRemoteExpiringURL(record.url) {
-                    if let savedAt = record.savedAt, now.timeIntervalSince(savedAt) <= remoteStreamTTL {
+                    if let savedAt = record.savedAt, now.timeIntervalSince(savedAt) <= maxAge {
                         var updated = records
                         updated[trimmedMetaId] = record
                         persistRecords(updated, profileId: profileId)
@@ -1478,5 +1479,35 @@ enum StreamBadgeSizing {
             return String(format: "Size %.1f GB", gib)
         }
         return "Size \(Int((Double(bytes) / 1_048_576).rounded())) MB"
+    }
+}
+
+/// "Reuse Last Link" (Android TV parity): play the last link used for the same
+/// movie/episode directly while it is younger than the configured cache window.
+enum ReuseLastLinkSettings {
+    static let defaultCacheHours = 24
+    static let cacheHourRange = 1...168
+    static let cacheHourOptions = [1, 6, 12, 24, 48, 168]
+
+    static func isEnabled(_ store: UserDefaults) -> Bool {
+        (store.object(forKey: SettingsKey.streamReuseLastLinkEnabled) as? Bool) ?? false
+    }
+
+    /// Synced values may arrive as Int, Double or String; anything unusable falls back to the default.
+    static func cacheHours(_ store: UserDefaults) -> Int {
+        let raw = store.object(forKey: SettingsKey.streamReuseLastLinkCacheHours)
+        let hours: Int?
+        switch raw {
+        case let value as Int: hours = value
+        case let value as Double: hours = Int(value)
+        case let value as String: hours = Int(value.trimmingCharacters(in: .whitespacesAndNewlines))
+        default: hours = nil
+        }
+        guard let hours else { return defaultCacheHours }
+        return min(max(hours, cacheHourRange.lowerBound), cacheHourRange.upperBound)
+    }
+
+    static func maxAge(_ store: UserDefaults) -> TimeInterval {
+        TimeInterval(cacheHours(store)) * 3600
     }
 }
