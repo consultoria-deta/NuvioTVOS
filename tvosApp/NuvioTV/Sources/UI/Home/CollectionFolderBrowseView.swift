@@ -47,6 +47,9 @@ struct CollectionFolderBrowseView: View {
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var selectedTabIndex = 0
+    /// Rows mode: the catalog opened on its own as a grid from its "See All" card
+    /// (mobile/desktop's per-row "View All"); nil shows the rows.
+    @State private var expandedRowId: String?
     @FocusState private var focusedItemID: String?
     @FocusState private var isLoadingFocusActive: Bool
     @State private var lastFocusedItemID: String?
@@ -123,7 +126,9 @@ struct CollectionFolderBrowseView: View {
 
     var body: some View {
         Group {
-            if usesCinematicPresentation {
+            if let expandedRow {
+                expandedRowBrowser(expandedRow)
+            } else if usesCinematicPresentation {
                 cinematicRowsBrowser
             } else {
                 gridBrowser
@@ -131,7 +136,7 @@ struct CollectionFolderBrowseView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .ignoresSafeArea(.container, edges: .horizontal)
-        .onExitCommand(perform: onBack)
+        .onExitCommand(perform: handleExit)
         .onAppear {
             TVHomeDebugTrace.log("collectionFolder.appear id=\(folder.id) title=\(collectionTitle)")
             requestLoadingFocusIfNeeded()
@@ -258,7 +263,8 @@ struct CollectionFolderBrowseView: View {
                                     loadMoreRowIfNeeded(rowId: row.id, currentItem: item)
                                 },
                                 onLongPress: onLongPress,
-                                onSelect: onSelect
+                                onSelect: onSelect,
+                                onSeeAll: { openExpandedRow(row.id) }
                             )
                         }
                     }
@@ -315,6 +321,86 @@ struct CollectionFolderBrowseView: View {
         }
         .ignoresSafeArea()
         .allowsHitTesting(false)
+    }
+
+    private var expandedRow: CollectionFolderCatalogRow? {
+        guard let expandedRowId else { return nil }
+        return catalogRows.first(where: { $0.id == expandedRowId })
+    }
+
+    private func openExpandedRow(_ rowId: String) {
+        expandedRowId = rowId
+        let firstItemID = catalogRows.first(where: { $0.id == rowId })?.items.first?.id
+        DispatchQueue.main.async { focusedItemID = firstItemID }
+    }
+
+    /// Back from an expanded catalog returns to the rows, on the same "See All" card.
+    private func handleExit() {
+        guard let rowId = expandedRowId else {
+            onBack()
+            return
+        }
+        expandedRowId = nil
+        let target = CollectionFolderSeeAllCard.focusKey(rowId: rowId)
+        DispatchQueue.main.async { focusedItemID = target }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { focusedItemID = target }
+    }
+
+    /// One catalog of a Rows-mode folder on its own, as a paged poster grid.
+    private func expandedRowBrowser(_ row: CollectionFolderCatalogRow) -> some View {
+        ZStack {
+            Color.nuvioBackground(amoled: amoled, body: bodyColor)
+                .ignoresSafeArea()
+
+            VStack(alignment: .leading, spacing: 20) {
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(sourceLabel(row.source))
+                            .font(.system(size: 42, weight: .bold))
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+                        Text(heading)
+                            .font(.system(size: 20, weight: .medium))
+                            .foregroundColor(.white.opacity(0.55))
+                            .lineLimit(1)
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, CollectionFolderLayout.horizontalPadding)
+                .padding(.top, 48)
+
+                ScrollView {
+                    LazyVGrid(columns: columns, alignment: .leading, spacing: CollectionFolderGridMetrics.posterGap) {
+                        ForEach(row.items) { item in
+                            CollectionFolderResultCard(
+                                meta: item,
+                                externalFocus: $focusedItemID,
+                                onLongPress: { onLongPress(item) }
+                            ) {
+                                onSelect(item)
+                            }
+                            .onAppear {
+                                loadMoreRowIfNeeded(rowId: row.id, currentItem: item)
+                            }
+                        }
+                    }
+                    .padding(.top, 16)
+                    .padding(.horizontal, CollectionFolderLayout.horizontalPadding)
+
+                    if row.isLoadingMore {
+                        ProgressView()
+                            .tint(.white)
+                            .padding(.vertical, 28)
+                            .frame(maxWidth: .infinity)
+                    }
+
+                    Color.clear.frame(height: 60)
+                }
+                .focusSection()
+                .defaultFocusIfAvailable($focusedItemID, row.items.first?.id)
+                .ignoresSafeArea(.container, edges: .horizontal)
+            }
+        }
     }
 
     /// Keep focus inside the full-screen collection while its network request
@@ -466,7 +552,8 @@ struct CollectionFolderBrowseView: View {
                                     loadMoreRowIfNeeded(rowId: row.id, currentItem: item)
                                 },
                                 onLongPress: onLongPress,
-                                onSelect: onSelect
+                                onSelect: onSelect,
+                                onSeeAll: { openExpandedRow(row.id) }
                             )
                             .equatable()
                         }
@@ -814,6 +901,9 @@ private struct CollectionFolderHomeStyleRow: View {
     let onApproachEnd: (NuvioMeta) -> Void
     let onLongPress: (NuvioMeta) -> Void
     let onSelect: (NuvioMeta) -> Void
+    /// Opens this catalog on its own as a grid. The card sits before the first
+    /// poster (one press left), because the strip pages forever to the right.
+    var onSeeAll: (() -> Void)? = nil
 
     /// Stable row id so composite card keys stay unique across strips.
     private var rowId: String { id }
@@ -891,8 +981,28 @@ private struct CollectionFolderHomeStyleRow: View {
             let posterCardWidth = TVCollectionFolderCardLayout.cardWidth(shape: rowTileShape, layoutMode: rowHomeLayout)
             let rowCardSpacing: CGFloat = rowHomeLayout == "Compact" ? 22.0 : 28.0
             let rowStep = posterCardWidth + rowCardSpacing
+            let leadingSlots = onSeeAll == nil ? 0 : 1
 
             HStack(alignment: .top, spacing: rowCardSpacing) {
+                if let onSeeAll {
+                    CollectionFolderSeeAllCard(
+                        title: title,
+                        width: posterCardWidth,
+                        height: rowHomeLayout == "Compact" ? 255 : 315,
+                        externalFocus: externalFocus,
+                        externalFocusValue: CollectionFolderSeeAllCard.focusKey(rowId: rowId),
+                        onFocus: {
+                            guard scrollIndex != 0 else { return }
+                            if rowSmoothFocus && !rowFastNavigation {
+                                withAnimation(TVHomeLayout.scrollAnimation) { scrollIndex = 0 }
+                            } else {
+                                scrollIndex = 0
+                            }
+                        },
+                        action: onSeeAll
+                    )
+                }
+
                 ForEach(items) { item in
                     let cardKey = "\(rowId)\u{1}\(item.id)"
                     PosterCard(
@@ -901,7 +1011,8 @@ private struct CollectionFolderHomeStyleRow: View {
                         isAlwaysLandscape: rowTileShape == .landscape || item.tileShape == .landscape,
                         tileShape: item.tileShape != .poster ? item.tileShape : rowTileShape,
                         onFocus: { focused in
-                            if let index = items.firstIndex(where: { $0.id == focused.id }) {
+                            if let itemIndex = items.firstIndex(where: { $0.id == focused.id }) {
+                                let index = itemIndex + leadingSlots
                                 if scrollIndex != index {
                                     let updateScroll = { scrollIndex = index }
                                     if rowSmoothFocus && !rowFastNavigation {
@@ -1001,6 +1112,65 @@ extension CollectionFolderHomeStyleRow: Equatable {
             && lhs.isLoadingMore == rhs.isLoadingMore
             && lhs.layoutMode == rhs.layoutMode
             && lhs.showPosterLabels == rhs.showPosterLabels
+    }
+}
+
+/// "See All" tile at the start of a Rows-mode catalog strip, sized like the row's cards.
+private struct CollectionFolderSeeAllCard: View {
+    let title: String
+    let width: CGFloat
+    let height: CGFloat
+    var externalFocus: FocusState<String?>.Binding? = nil
+    let externalFocusValue: String
+    let onFocus: () -> Void
+    let action: () -> Void
+
+    static func focusKey(rowId: String) -> String {
+        "\(rowId)\u{1}\(TVHomeGridLayout.seeAllID)"
+    }
+
+    @FocusState private var isFocused: Bool
+    @AppStorage(SettingsKey.smoothFocus) private var smoothFocus = true
+    @AppStorage(SettingsKey.focusHighlighter) private var focusHighlighter = false
+    @AppStorage(SettingsKey.cardCornerRadius) private var cardCornerRadiusSetting = AppCardStyle.defaultCornerRadiusRaw
+
+    private var shape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: AppCardStyle.cornerRadius(for: cardCornerRadiusSetting, fallback: 16), style: .continuous)
+    }
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 14) {
+                Image(systemName: "rectangle.grid.3x2.fill")
+                    .font(.system(size: 40, weight: .medium))
+                Text(L10n.string("action_see_all", fallback: "See All"))
+                    .font(.system(size: 22, weight: .bold))
+                Text(title)
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.white.opacity(0.58))
+                    .lineLimit(3)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 10)
+            }
+            .foregroundColor(.white)
+            .frame(width: width, height: height)
+            .modifier(LiquidGlassSurface(cornerRadius: AppCardStyle.cornerRadius(for: cardCornerRadiusSetting, fallback: 16), prominent: isFocused))
+            .overlay(
+                shape.stroke(
+                    isFocused ? AppFocusOutline.color : .clear,
+                    lineWidth: focusHighlighter ? AppFocusOutline.emphasizedWidth : AppFocusOutline.width
+                )
+            )
+            .shadow(color: .black.opacity(isFocused ? 0.5 : 0.2), radius: isFocused ? 16 : 6)
+            .scaleEffect(isFocused ? 1.06 : 1)
+        }
+        .buttonStyle(PosterCardButtonStyle(onNativeFocusChange: { focused in
+            if focused { onFocus() }
+        }))
+        .focused($isFocused)
+        .modifier(ExternalFocusBinding(binding: externalFocus, id: externalFocusValue))
+        .focusEffectDisabledIfAvailable()
+        .animation(smoothFocus ? .spring(response: 0.28, dampingFraction: 0.75) : nil, value: isFocused)
     }
 }
 
